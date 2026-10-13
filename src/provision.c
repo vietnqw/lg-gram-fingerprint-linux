@@ -139,7 +139,7 @@ in_bootloader (GError **error)
 {
   if (error && *error)
     g_prefix_error (error, "the sensor is left in its bootloader and has no firmware until "
-                           "provisioning succeeds; run `sudo geneva-fp-tool provision` again. ");
+                           "provisioning succeeds; run `sudo lg-gram-fp-tool provision` again. ");
   return FALSE;
 }
 

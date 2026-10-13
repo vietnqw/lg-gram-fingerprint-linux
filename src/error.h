@@ -12,7 +12,7 @@ typedef enum {
   GV_ERROR_TIMEOUT,          /* the chip did not answer in time */
   GV_ERROR_NOT_PROVISIONED,  /* PSK is not ours (e.g. Windows re-keyed it): run provisioning */
   GV_ERROR_NO_FIRMWARE,      /* app firmware not running (chip in bootloader) */
-  GV_ERROR_NO_CONFIG,        /* sensor config missing: run `geneva-fp-tool extract` */
+  GV_ERROR_NO_CONFIG,        /* sensor config missing: run `lg-gram-fp-tool extract` */
 } GvError;
 
 /* Set error and return NULL (for one-line error returns). */

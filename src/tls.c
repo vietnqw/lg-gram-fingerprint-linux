@@ -265,7 +265,7 @@ gv_tls_encrypt (GvTls *tls, guint8 type, const guint8 *data, gsize len)
   record_mac (tls->srv_mac, tls->srv_seq++, type, data, len, p + len);
   memset (p + plen, pad, pad + 1);
   if (RAND_bytes (iv, sizeof iv) != 1 || !aes_cbc (TRUE, tls->srv_key, iv, p, total, c))
-    g_error ("geneva-fp: libcrypto failure while encrypting a TLS record");
+    g_error ("lg-gram-fingerprint: libcrypto failure while encrypting a TLS record");
 
   put_record_header (out, type, 16 + total);
   g_byte_array_append (out, iv, 16);

@@ -1,6 +1,6 @@
-geneva-fp (0.1.0) unstable; urgency=medium
+lg-gram-fingerprint (0.1.0) unstable; urgency=medium
 
-  * Initial release: native libfprint TOD driver, SIGFM matching, geneva-fp-tool
+  * Initial release: native libfprint TOD driver, SIGFM matching, lg-gram-fp-tool
     (status, capture, extract, provision).
 
  -- Viet Ngo <vietnq.work@gmail.com>  Tue, 13 Oct 2026 21:00:00 +0700

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 #include "error.h"
 
-G_DEFINE_QUARK (geneva-fp-error-quark, gv_error)
+G_DEFINE_QUARK (lg-gram-fp-error-quark, gv_error)
 
 gpointer
 gv_error_null (GError **error, GvError code, const char *fmt, ...)

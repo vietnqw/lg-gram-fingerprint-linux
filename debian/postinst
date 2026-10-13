@@ -11,9 +11,9 @@ if [ "$1" = configure ]; then
   udevadm settle || true
   systemctl daemon-reload || true
   systemctl try-restart fprintd.service || true
-  if [ ! -s /var/lib/geneva-fp/firmware.bin ]; then
-    echo "geneva-fp: finish setup with  sudo geneva-fp-tool extract <LG driver zip>"
-    echo "           and                sudo geneva-fp-tool provision"
+  if [ ! -s /var/lib/lg-gram-fingerprint/firmware.bin ]; then
+    echo "lg-gram-fingerprint: finish setup with  sudo lg-gram-fp-tool extract <LG driver zip>"
+    echo "           and                sudo lg-gram-fp-tool provision"
   fi
 fi
 #DEBHELPER#

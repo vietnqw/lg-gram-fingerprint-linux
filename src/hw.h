@@ -10,7 +10,7 @@
 #define GV_ACPI_ID          "GXFP5A8B"
 #define GV_GPIOCHIP         "/dev/gpiochip0"   /* INT3455:00 */
 #define GV_RESET_LINE       46                 /* ACPI pad GFPS */
-#define GV_DATA_DIR         "/var/lib/geneva-fp"
+#define GV_DATA_DIR         "/var/lib/lg-gram-fingerprint"
 #define GV_CONFIG_PATH      GV_DATA_DIR "/sensor-config.bin"
 #define GV_FIRMWARE_PATH    GV_DATA_DIR "/firmware.bin"
 

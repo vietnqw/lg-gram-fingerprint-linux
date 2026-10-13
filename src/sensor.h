@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later
  *
  * Sensor session: TLS bring-up, finger detection and frame capture. Blocking and
- * cancellable; used by the libfprint driver (from a worker thread) and by geneva-fp-tool.
+ * cancellable; used by the libfprint driver (from a worker thread) and by lg-gram-fp-tool.
  */
 #pragma once
 

@@ -1,4 +1,4 @@
-geneva-fp
+lg-gram-fingerprint-linux
 Copyright (C) 2026 Viet Ngo
 Licensed under the GNU Lesser General Public License v2.1 or later (see LICENSE).
 
@@ -15,5 +15,5 @@ This project includes or is derived from:
   The message framing and the white-box encoded all-zero PSK used for provisioning
   (src/provision.c) follow this project.
 
-No Goodix or LG code or firmware is distributed. geneva-fp-tool extracts the sensor
+No Goodix or LG code or firmware is distributed. lg-gram-fp-tool extracts the sensor
 configuration and firmware from LG's Windows driver package supplied by the user.

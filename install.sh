@@ -40,7 +40,7 @@ sudo udevadm settle
 sudo systemctl daemon-reload
 sudo systemctl try-restart fprintd.service || true
 
-if [ ! -s /var/lib/geneva-fp/firmware.bin ]; then
+if [ ! -s /var/lib/lg-gram-fingerprint/firmware.bin ]; then
   if [ -z "$LG_DRIVER" ]; then
     say "Almost done: the sensor configuration comes from LG's Windows driver"
     echo "   Download LG's \"Fingerprint Driver\" 3.1.100.320 (GD_FP_W106_15_3.1.100.320.zip)"
@@ -48,16 +48,16 @@ if [ ! -s /var/lib/geneva-fp/firmware.bin ]; then
     exit 0
   fi
   say "Extracting sensor configuration from $LG_DRIVER"
-  sudo geneva-fp-tool extract "$LG_DRIVER"
+  sudo lg-gram-fp-tool extract "$LG_DRIVER"
 fi
 
 say "Checking the sensor"
-if ! sudo geneva-fp-tool status; then
+if ! sudo lg-gram-fp-tool status; then
   echo
   say "The sensor must be paired with Linux once"
-  sudo geneva-fp-tool provision
+  sudo lg-gram-fp-tool provision
 fi
 
 say "Done. Next steps:"
 echo "   fprintd-enroll                          # enroll a finger"
-echo "   sudo pam-auth-update --enable geneva-fp # use it for login, lock screen and sudo"
+echo "   sudo pam-auth-update --enable lg-gram-fingerprint # use it for login, lock screen and sudo"

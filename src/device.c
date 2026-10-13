@@ -72,7 +72,7 @@ gv_device_open (const char *spidev, const char *gpiochip, guint reset_line, GErr
   req.offsets[0] = reset_line;
   req.num_lines = 1;
   req.config.flags = GPIO_V2_LINE_FLAG_OUTPUT;
-  g_strlcpy (req.consumer, "geneva-fp reset", sizeof req.consumer);
+  g_strlcpy (req.consumer, "lg-gram-fp reset", sizeof req.consumer);
   if (ioctl (chip, GPIO_V2_GET_LINE_IOCTL, &req) < 0)
     {
       int e = errno;

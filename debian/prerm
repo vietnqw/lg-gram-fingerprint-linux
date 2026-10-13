@@ -1,6 +1,6 @@
 #!/bin/sh
 set -e
 if [ "$1" = remove ]; then
-  pam-auth-update --package --remove geneva-fp || true
+  pam-auth-update --package --remove lg-gram-fingerprint || true
 fi
 #DEBHELPER#

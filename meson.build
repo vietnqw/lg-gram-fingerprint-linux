@@ -1,4 +1,4 @@
-project('geneva-fp', 'c', 'cpp',
+project('lg-gram-fingerprint', 'c', 'cpp',
   version: '0.1.0',
   license: 'LGPL-2.1-or-later',
   meson_version: '>= 0.62',
@@ -35,14 +35,14 @@ match = static_library('geneva-match', 'src/match.cpp',
 match_dep = declare_dependency(link_with: [match, sigfm], include_directories: core_inc,
                                dependencies: [glib, opencv])
 
-executable('geneva-fp-tool', 'tools/geneva-fp-tool.c',
+executable('lg-gram-fp-tool', 'tools/lg-gram-fp-tool.c',
   dependencies: core_dep,
   install: true)
 
 if get_option('driver')
   tod = dependency('libfprint-2-tod-1')
   tod_dir = tod.get_variable(pkgconfig: 'tod_driversdir')
-  shared_module('geneva', 'src/tod-geneva.c',
+  shared_module('lg-gram-fingerprint', 'src/tod-geneva.c',
     name_prefix: 'libfprint-2-tod-',
     dependencies: [core_dep, match_dep, tod, dependency('libfprint-2')],
     gnu_symbol_visibility: 'hidden',
@@ -51,12 +51,12 @@ if get_option('driver')
     install_dir: tod_dir)
 endif
 
-install_data('data/60-geneva-fp.rules', install_dir: get_option('udevrulesdir'))
-install_data('data/geneva-fp-modprobe.conf', rename: 'geneva-fp.conf',
+install_data('data/60-lg-gram-fingerprint.rules', install_dir: get_option('udevrulesdir'))
+install_data('data/modprobe.conf', rename: 'lg-gram-fingerprint.conf',
              install_dir: get_option('prefix') / 'lib/modprobe.d')
-install_data('data/fprintd-geneva-fp.conf', rename: 'geneva-fp.conf',
+install_data('data/fprintd.conf', rename: 'lg-gram-fingerprint.conf',
              install_dir: get_option('systemdunitdir') / 'fprintd.service.d')
-install_data('data/pam-config-geneva-fp', rename: 'geneva-fp',
+install_data('data/pam-config', rename: 'lg-gram-fingerprint',
              install_dir: get_option('datadir') / 'pam-configs')
 
 if get_option('tests')

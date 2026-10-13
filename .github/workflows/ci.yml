@@ -44,7 +44,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: geneva-fp-ubuntu${{ matrix.release }}
+          name: lg-gram-fingerprint-ubuntu${{ matrix.release }}
           path: dist/*.deb
 
   release:

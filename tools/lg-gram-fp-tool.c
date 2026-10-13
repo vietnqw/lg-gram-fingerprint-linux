@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later
  *
- * geneva-fp-tool: setup and diagnostics for the Goodix GXFP5A8B ("Geneva") fingerprint sensor.
+ * lg-gram-fp-tool: setup and diagnostics for the Goodix GXFP5A8B ("Geneva") fingerprint sensor.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,8 +46,8 @@ cmd_status (int argc, char **argv, GError **error)
     return 1;
   gboolean app = g_str_has_prefix (fw, "GF3268");
 
-  printf ("firmware:       %s%s\n", fw, app ? "" : "  (NOT running the application - run `sudo geneva-fp-tool provision`)");
-  printf ("paired (PSK):   %s\n", psk_ok ? "yes" : "NO - run `sudo geneva-fp-tool provision`");
+  printf ("firmware:       %s%s\n", fw, app ? "" : "  (NOT running the application - run `sudo lg-gram-fp-tool provision`)");
+  printf ("paired (PSK):   %s\n", psk_ok ? "yes" : "NO - run `sudo lg-gram-fp-tool provision`");
   printf ("sensor config:  %s\n", gv_config_load (opt_config ? opt_config : GV_CONFIG_PATH, cfg, &cfg_err)
           ? "ok" : cfg_err->message);
   return app && psk_ok && !cfg_err ? 0 : 1;
@@ -105,7 +105,7 @@ cmd_extract (int argc, char **argv, GError **error)
 
   if (argc < 2)
     {
-      fprintf (stderr, "usage: geneva-fp-tool extract <LG driver .zip or Wbdi.dll>\n"
+      fprintf (stderr, "usage: lg-gram-fp-tool extract <LG driver .zip or Wbdi.dll>\n"
                        "Download \"Fingerprint Driver\" 3.1.100.320 for your LG gram from LG's support site.\n");
       return 2;
     }
@@ -144,7 +144,7 @@ cmd_provision (int argc, char **argv, GError **error)
   if (!g_file_get_contents (GV_FIRMWARE_PATH, &image, &len, NULL) || len != GV_FIRMWARE_SIZE)
     {
       g_set_error (error, GV_ERROR, GV_ERROR_NO_FIRMWARE,
-                   "%s missing; run `sudo geneva-fp-tool extract <LG driver>` first", GV_FIRMWARE_PATH);
+                   "%s missing; run `sudo lg-gram-fp-tool extract <LG driver>` first", GV_FIRMWARE_PATH);
       return 1;
     }
 
@@ -170,7 +170,7 @@ cmd_provision (int argc, char **argv, GError **error)
     g_autoptr(GSubprocess) inhibit = g_subprocess_new (G_SUBPROCESS_FLAGS_STDOUT_SILENCE |
                                                        G_SUBPROCESS_FLAGS_STDERR_SILENCE, NULL,
                                                        "systemd-inhibit", "--what=sleep:shutdown:idle",
-                                                       "--who=geneva-fp-tool",
+                                                       "--who=lg-gram-fp-tool",
                                                        "--why=Reflashing the fingerprint sensor",
                                                        "sleep", "600", NULL);
     gboolean ok;

@@ -1,5 +1,5 @@
 Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: geneva-fp
+Upstream-Name: lg-gram-fingerprint-linux
 
 Files: *
 Copyright: 2026 Viet Ngo

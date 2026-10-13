@@ -1,14 +1,14 @@
-Source: geneva-fp
+Source: lg-gram-fingerprint
 Section: libs
 Priority: optional
 Maintainer: Viet Ngo <vietnq.work@gmail.com>
 Build-Depends: debhelper-compat (= 13), meson, ninja-build, pkgconf, libglib2.0-dev,
  libssl-dev, libopencv-dev, libfprint-2-tod-dev
 Standards-Version: 4.7.0
-Homepage: https://github.com/OWNER/geneva-fp
+Homepage: https://github.com/OWNER/lg-gram-fingerprint-linux
 Rules-Requires-Root: no
 
-Package: geneva-fp
+Package: lg-gram-fingerprint
 Architecture: amd64
 Depends: ${shlibs:Depends}, ${misc:Depends}, libfprint-2-tod1, fprintd, unzip
 Recommends: libpam-fprintd
@@ -18,4 +18,4 @@ Description: driver for the Goodix GXFP5A8B fingerprint sensor (LG gram)
  (e.g. 15Z90N). Works with fprintd for login, lock screen and sudo.
  .
  The sensor configuration is extracted from LG's Windows driver with
- geneva-fp-tool; no proprietary files are shipped.
+ lg-gram-fp-tool; no proprietary files are shipped.
