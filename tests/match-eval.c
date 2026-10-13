@@ -1,23 +1,32 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later
  *
- * Developer tool: genuine/impostor score distribution on local captures.
- *   match-eval DIR_A DIR_B [n_enroll]
- * Each DIR holds bg.bin and fNN.bin (decrypted 14260-byte frames from geneva_driver.py loop).
+ * Developer tool: genuine/impostor score distribution on your own captures.
+ *   sudo lg-gram-fp-tool collect a 15     # 15 touches of one finger
+ *   sudo lg-gram-fp-tool collect b 8      # 8 touches of another finger
+ *   match-eval a b [n_enroll]
+ * Enrolls the first n_enroll (default 8) captures of A, then scores the rest of A (same
+ * finger) and all of B (different finger) against them.
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "match.h"
 #include "proto.h"
 
+static const char PGM_HEADER[] = "P5\n108 88\n4095\n";
+
+/* 16-bit PGM written by `lg-gram-fp-tool collect` */
 static gboolean
 load (const char *path, guint16 *px)
 {
   g_autofree char *d = NULL;
-  gsize n;
+  gsize n, h = strlen (PGM_HEADER);
 
-  if (!g_file_get_contents (path, &d, &n, NULL) || n < GV_IMG_PACKED)
+  if (!g_file_get_contents (path, &d, &n, NULL) || n != h + 2 * GV_IMG_PIXELS ||
+      memcmp (d, PGM_HEADER, h) != 0)
     return FALSE;
-  gv_image_decode ((const guint8 *) d, px);
+  for (gsize i = 0; i < GV_IMG_PIXELS; i++)
+    px[i] = ((guint8) d[h + 2 * i] << 8) | (guint8) d[h + 2 * i + 1];
   return TRUE;
 }
 
@@ -25,20 +34,19 @@ static GPtrArray *
 load_dir (const char *dir)
 {
   GPtrArray *out = g_ptr_array_new_with_free_func ((GDestroyNotify) gv_features_free);
-  g_autofree char *bgp = g_build_filename (dir, "bg.bin", NULL);
   guint16 bg[GV_IMG_PIXELS], fr[GV_IMG_PIXELS];
 
-  if (!load (bgp, bg))
-    g_error ("cannot read %s", bgp);
   for (int i = 0; i < 100; i++)
     {
-      g_autofree char *name = g_strdup_printf ("f%02d.bin", i);
-      g_autofree char *p = g_build_filename (dir, name, NULL);
+      g_autofree char *f = g_strdup_printf ("%s/f%02d.pgm", dir, i);
+      g_autofree char *b = g_strdup_printf ("%s/bg%02d.pgm", dir, i);
 
-      if (!load (p, fr))
+      if (!load (f, fr) || !load (b, bg))
         break;
       g_ptr_array_add (out, gv_features_extract (bg, fr));
     }
+  if (!out->len)
+    g_error ("no captures in %s (see `lg-gram-fp-tool collect`)", dir);
   return out;
 }
 
@@ -66,12 +74,12 @@ main (int argc, char **argv)
     }
   a = load_dir (argv[1]);
   b = load_dir (argv[2]);
-  n = argc > 3 ? (guint) atoi (argv[3]) : 8;
-  printf ("keypoints A[0]=%d B[0]=%d\ngenuine :", gv_features_keypoints (g_ptr_array_index (a, 0)),
-          gv_features_keypoints (g_ptr_array_index (b, 0)));
+  n = MIN (argc > 3 ? (guint) atoi (argv[3]) : 8, a->len - 1);
+  printf ("genuine :");
   for (guint i = n; i < a->len; i++)
     {
       int s = best (g_ptr_array_index (a, i), a, n);
+
       gmin = MIN (gmin, s);
       printf (" %d", s);
     }
@@ -79,6 +87,7 @@ main (int argc, char **argv)
   for (guint i = 0; i < b->len; i++)
     {
       int s = best (g_ptr_array_index (b, i), a, n);
+
       imax = MAX (imax, s);
       printf (" %d", s);
     }

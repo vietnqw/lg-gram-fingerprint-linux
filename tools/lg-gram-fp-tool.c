@@ -100,6 +100,59 @@ cmd_capture (int argc, char **argv, GError **error)
   return 0;
 }
 
+/* 16-bit PGM of raw 12-bit pixels */
+static gboolean
+write_raw_pgm (const char *path, const guint16 *px, GError **error)
+{
+  g_autoptr(GString) out = g_string_new (NULL);
+
+  g_string_printf (out, "P5\n%d %d\n4095\n", GV_IMG_WIDTH, GV_IMG_HEIGHT);
+  for (gsize i = 0; i < GV_IMG_PIXELS; i++)
+    {
+      g_string_append_c (out, (char) (px[i] >> 8));
+      g_string_append_c (out, (char) (px[i] & 0xff));
+    }
+  return g_file_set_contents (path, out->str, out->len, error);
+}
+
+static int
+cmd_collect (int argc, char **argv, GError **error)
+{
+  g_autoptr(GvSensor) s = NULL;
+  guint16 frame[GV_IMG_PIXELS], bg[GV_IMG_PIXELS];
+  int n, got = 0;
+
+  if (argc < 2)
+    {
+      fprintf (stderr, "usage: lg-gram-fp-tool collect DIR [N]   (raw frames for tests/match-eval)\n");
+      return 2;
+    }
+  n = argc > 2 ? atoi (argv[2]) : 10;
+  if (g_mkdir_with_parents (argv[1], 0755) < 0 || !(s = open_sensor (TRUE, error)))
+    return 1;
+  while (got < n)
+    {
+      GvCaptureResult res;
+      g_autofree char *f = g_strdup_printf ("%s/f%02d.pgm", argv[1], got);
+      g_autofree char *b = g_strdup_printf ("%s/bg%02d.pgm", argv[1], got);
+
+      printf ("[%d/%d] touch the sensor...\n", got + 1, n);
+      fflush (stdout);
+      if (!gv_sensor_capture (s, frame, bg, &res, NULL, error))
+        return 1;
+      if (res == GV_CAPTURE_OK)
+        {
+          if (!write_raw_pgm (f, frame, error) || !write_raw_pgm (b, bg, error))
+            return 1;
+          got++;
+        }
+      printf ("  %s - lift your finger\n", res == GV_CAPTURE_OK ? "saved" : "poor contact, again");
+      if (!gv_sensor_wait_lift (s, NULL, error))
+        return 1;
+    }
+  return 0;
+}
+
 static int
 cmd_extract (int argc, char **argv, GError **error)
 {
@@ -289,6 +342,7 @@ static const struct {
   { "setup", "", "set everything up (download config, pair, enable)", cmd_setup },
   { "status", "", "show firmware, pairing and configuration state", cmd_status },
   { "capture", "[FILE.pgm]", "capture one fingerprint image", cmd_capture },
+  { "collect", "DIR [N]", "save N raw captures (for tests/match-eval)", cmd_collect },
   { "extract", "DRIVER", "extract config + firmware from a Goodix driver package", cmd_extract },
   { "provision", "", "pair the sensor with Linux (reflashes it)", cmd_provision },
 };

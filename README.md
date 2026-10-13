@@ -110,6 +110,23 @@ fprintd ── libfprint (distro) ── TOD module libfprint-2-tod-lg-gram-fing
 The full protocol, including the details that made it hard, is in
 [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
+## Development
+
+```sh
+meson setup build && meson compile -C build && meson test -C build
+sudo FP_TOD_DRIVERS_DIR=$PWD/build build/tests/fp-harness enroll /tmp/print   # driver without installing
+```
+
+To measure matching accuracy on your own fingers:
+
+```sh
+sudo build/lg-gram-fp-tool collect a 15    # 15 touches of one finger
+sudo build/lg-gram-fp-tool collect b 8     # 8 touches of another finger
+build/tests/match-eval a b                 # same-finger vs other-finger scores
+```
+
+Captured images are your fingerprints: keep them private and don't attach them to issues.
+
 ## Credits and license
 
 LGPL-2.1-or-later, see [LICENSE](LICENSE) and [NOTICE](NOTICE).
