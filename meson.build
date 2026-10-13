@@ -39,6 +39,18 @@ executable('geneva-fp-tool', 'tools/geneva-fp-tool.c',
   dependencies: core_dep,
   install: true)
 
+if get_option('driver')
+  tod = dependency('libfprint-2-tod-1')
+  tod_dir = tod.get_variable(pkgconfig: 'tod_driversdir')
+  shared_module('geneva', 'src/tod-geneva.c',
+    name_prefix: 'libfprint-2-tod-',
+    dependencies: [core_dep, match_dep, tod, dependency('libfprint-2')],
+    gnu_symbol_visibility: 'hidden',
+    link_args: ['-Wl,--exclude-libs,ALL'],
+    install: true,
+    install_dir: tod_dir)
+endif
+
 if get_option('tests')
   subdir('tests')
 endif

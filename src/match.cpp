@@ -2,6 +2,7 @@
 #include "match.h"
 #include "proto.h"
 #include "sigfm/sigfm.hpp"
+#include "sigfm/img-info.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -89,24 +90,61 @@ gv_features_keypoints (GvFeatures *f)
   return sigfm_keypoints_count (f->info);
 }
 
+/* Compact template format (SIGFM only uses keypoint positions and descriptors):
+ *   "GVF1" | u16 count | count x (f32 x, f32 y) | count x 128 u8 descriptor
+ * OpenCV's SIFT descriptors are integers 0..255 stored as floats, so u8 is lossless and
+ * ~4x smaller than SIGFM's own serialisation. */
+#define FEAT_MAGIC "GVF1"
+#define DESC_LEN   128
+
 GBytes *
 gv_features_serialize (GvFeatures *f)
 {
-  int len = 0;
-  unsigned char *raw = sigfm_serialize_binary (f->info, &len);
-  GBytes *b = g_bytes_new (raw, len);
+  const auto &kp = f->info->keypoints;
+  const cv::Mat &desc = f->info->descriptors;
+  guint16 count = (guint16) MIN (kp.size (), (size_t) G_MAXUINT16);
+  GByteArray *out = g_byte_array_sized_new (6 + count * (8 + DESC_LEN));
 
-  std::free (raw);
-  return b;
+  g_byte_array_append (out, (const guint8 *) FEAT_MAGIC, 4);
+  g_byte_array_append (out, (const guint8 *) &count, 2);
+  for (guint16 i = 0; i < count; i++)
+    {
+      float xy[2] = { kp[i].pt.x, kp[i].pt.y };
+      g_byte_array_append (out, (const guint8 *) xy, sizeof xy);
+    }
+  for (guint16 i = 0; i < count; i++)
+    for (int j = 0; j < DESC_LEN; j++)
+      {
+        guint8 v = cv::saturate_cast<guint8> (desc.at<float> (i, j));
+        g_byte_array_append (out, &v, 1);
+      }
+  return g_byte_array_free_to_bytes (out);
 }
 
 GvFeatures *
 gv_features_deserialize (const guint8 *data, gsize len)
 {
-  SigfmImgInfo *info = sigfm_deserialize_binary (data, (int) len);
+  guint16 count;
+  SigfmImgInfo *info;
 
-  if (!info)
+  if (len < 6 || memcmp (data, FEAT_MAGIC, 4) != 0)
     return nullptr;
+  memcpy (&count, data + 4, 2);
+  if (len != 6 + (gsize) count * (8 + DESC_LEN))
+    return nullptr;
+
+  info = new SigfmImgInfo;
+  info->descriptors.create (count, DESC_LEN, CV_32F);
+  for (guint16 i = 0; i < count; i++)
+    {
+      float xy[2];
+      memcpy (xy, data + 6 + 8 * i, sizeof xy);
+      info->keypoints.emplace_back (cv::Point2f (xy[0], xy[1]), 1.0f);
+    }
+  const guint8 *d = data + 6 + 8 * count;
+  for (guint16 i = 0; i < count; i++)
+    for (int j = 0; j < DESC_LEN; j++)
+      info->descriptors.at<float> (i, j) = d[i * DESC_LEN + j];
   return new GvFeatures{ info };
 }
 
