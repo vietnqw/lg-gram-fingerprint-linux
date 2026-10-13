@@ -4,3 +4,7 @@ foreach t : ['proto', 'tls']
   test(t, executable('test-' + t, 'test-' + t + '.c',
                      dependencies: [core_dep, ssl]))
 endforeach
+
+test('match', executable('test-match', 'test-match.c', dependencies: [core_dep, match_dep]))
+
+executable('match-eval', 'match-eval.c', dependencies: [core_dep, match_dep])

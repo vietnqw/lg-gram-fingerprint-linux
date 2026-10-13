@@ -21,6 +21,20 @@ core = static_library('geneva-core',
 core_dep = declare_dependency(link_with: core, include_directories: core_inc,
                               dependencies: [glib, gio, crypto])
 
+opencv = dependency('opencv4', version: '>= 4.5')
+# Vendored SIGFM (LGPL-2.1+): built as-is, without our stricter warnings.
+sigfm = static_library('sigfm', 'src/sigfm/sigfm.cpp',
+  dependencies: opencv,
+  override_options: ['warning_level=0', 'werror=false'],
+  pic: true)
+match = static_library('geneva-match', 'src/match.cpp',
+  include_directories: core_inc,
+  dependencies: [glib, opencv],
+  link_with: sigfm,
+  pic: true)
+match_dep = declare_dependency(link_with: [match, sigfm], include_directories: core_inc,
+                               dependencies: [glib, opencv])
+
 executable('geneva-fp-tool', 'tools/geneva-fp-tool.c',
   dependencies: core_dep,
   install: true)
