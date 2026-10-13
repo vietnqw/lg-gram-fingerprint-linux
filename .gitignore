@@ -1,3 +1,10 @@
 build/
+obj-*/
 *.pgm
 *.png
+debian/geneva-fp/
+debian/.debhelper/
+debian/files
+debian/*.substvars
+debian/debhelper-build-stamp
+debian/*.log

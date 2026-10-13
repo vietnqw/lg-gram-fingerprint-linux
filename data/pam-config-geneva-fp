@@ -1,0 +1,7 @@
+Name: Fingerprint authentication (3 tries)
+Default: no
+Priority: 260
+Conflicts: fprint, fprintd
+Auth-Type: Primary
+Auth:
+	[success=end default=ignore]	pam_fprintd.so max-tries=3 timeout=15

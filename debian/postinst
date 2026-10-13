@@ -1,0 +1,19 @@
+#!/bin/sh
+set -e
+if [ "$1" = configure ]; then
+  pam-auth-update --package || true
+  udevadm control --reload-rules || true
+  if [ -e /sys/module/spidev/parameters/bufsiz ] && \
+     [ "$(cat /sys/module/spidev/parameters/bufsiz)" -lt 65536 ]; then
+    modprobe -r spidev 2>/dev/null || true
+  fi
+  udevadm trigger --action=add --subsystem-match=spi || true
+  udevadm settle || true
+  systemctl daemon-reload || true
+  systemctl try-restart fprintd.service || true
+  if [ ! -s /var/lib/geneva-fp/firmware.bin ]; then
+    echo "geneva-fp: finish setup with  sudo geneva-fp-tool extract <LG driver zip>"
+    echo "           and                sudo geneva-fp-tool provision"
+  fi
+fi
+#DEBHELPER#

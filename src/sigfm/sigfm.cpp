@@ -1,4 +1,6 @@
 // SIGFM algorithm for libfprint
+// (geneva-fp: removed the catch-all opencv.hpp/imgcodecs includes to link only core,
+//  imgproc and features2d)
 
 // Copyright (C) 2022 Matthieu CHARETTE <matthieu.charette@gmail.com>
 // Copyright (c) 2022 Natasha England-Elbro <ashenglandelbro@protonmail.com>
@@ -26,7 +28,6 @@
 #include "opencv2/core/persistence.hpp"
 #include "opencv2/core/types.hpp"
 #include "opencv2/features2d.hpp"
-#include "opencv2/imgcodecs.hpp"
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
@@ -35,7 +36,7 @@
 #include <sstream>
 #include <string>
 
-#include <opencv2/opencv.hpp>
+#include <set>
 #include <vector>
 
 namespace bin {

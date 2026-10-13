@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+if [ "$1" = remove ] || [ "$1" = purge ]; then
+  systemctl daemon-reload || true
+  systemctl try-restart fprintd.service || true
+fi
+if [ "$1" = purge ]; then
+  rm -rf /var/lib/geneva-fp
+fi
+#DEBHELPER#

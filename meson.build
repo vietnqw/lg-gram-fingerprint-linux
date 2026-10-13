@@ -51,6 +51,14 @@ if get_option('driver')
     install_dir: tod_dir)
 endif
 
+install_data('data/60-geneva-fp.rules', install_dir: get_option('udevrulesdir'))
+install_data('data/geneva-fp-modprobe.conf', rename: 'geneva-fp.conf',
+             install_dir: get_option('prefix') / 'lib/modprobe.d')
+install_data('data/fprintd-geneva-fp.conf', rename: 'geneva-fp.conf',
+             install_dir: get_option('systemdunitdir') / 'fprintd.service.d')
+install_data('data/pam-config-geneva-fp', rename: 'geneva-fp',
+             install_dir: get_option('datadir') / 'pam-configs')
+
 if get_option('tests')
   subdir('tests')
 endif

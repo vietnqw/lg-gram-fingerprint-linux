@@ -1,0 +1,17 @@
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: geneva-fp
+
+Files: *
+Copyright: 2026 Viet Ngo
+License: LGPL-2.1+
+
+Files: src/sigfm/*
+Copyright: 2022 Matthieu CHARETTE, Natasha England-Elbro, Timur Mangliev
+License: LGPL-2.1+
+
+License: LGPL-2.1+
+ This library is free software; you can redistribute it and/or modify it under the
+ terms of the GNU Lesser General Public License as published by the Free Software
+ Foundation; either version 2.1 of the License, or (at your option) any later version.
+ .
+ On Debian systems, the full text is in /usr/share/common-licenses/LGPL-2.1.

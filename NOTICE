@@ -1,0 +1,19 @@
+geneva-fp
+Copyright (C) 2026 Viet Ngo
+Licensed under the GNU Lesser General Public License v2.1 or later (see LICENSE).
+
+This project includes or is derived from:
+
+* SIGFM (src/sigfm/), LGPL-2.1-or-later
+  Copyright (C) 2022 Matthieu CHARETTE, Natasha England-Elbro, Timur Mangliev
+  https://github.com/goodix-fp-linux-dev/libfprint (branch sigfm)
+  Modified: trimmed OpenCV includes.
+
+* goodix-fp-dump, MIT License
+  Copyright (c) 2022 Goodix Fingerprint Linux Development
+  https://github.com/goodix-fp-linux-dev/goodix-fp-dump
+  The message framing and the white-box encoded all-zero PSK used for provisioning
+  (src/provision.c) follow this project.
+
+No Goodix or LG code or firmware is distributed. geneva-fp-tool extracts the sensor
+configuration and firmware from LG's Windows driver package supplied by the user.

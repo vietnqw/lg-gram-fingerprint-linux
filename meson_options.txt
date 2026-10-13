@@ -1,2 +1,4 @@
 option('tests', type: 'boolean', value: true, description: 'Build unit tests')
 option('driver', type: 'boolean', value: true, description: 'Build the libfprint TOD driver')
+option('udevrulesdir', type: 'string', value: '/usr/lib/udev/rules.d', description: 'udev rules directory')
+option('systemdunitdir', type: 'string', value: '/usr/lib/systemd/system', description: 'systemd system unit directory')
