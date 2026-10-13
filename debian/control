@@ -5,7 +5,7 @@ Maintainer: Viet Ngo <vietnq.work@gmail.com>
 Build-Depends: debhelper-compat (= 13), meson, ninja-build, pkgconf, libglib2.0-dev,
  libssl-dev, libopencv-dev, libfprint-2-tod-dev
 Standards-Version: 4.7.0
-Homepage: https://github.com/OWNER/lg-gram-fingerprint-linux
+Homepage: https://github.com/vietnqw/lg-gram-fingerprint-linux
 Rules-Requires-Root: no
 
 Package: lg-gram-fingerprint

@@ -48,7 +48,7 @@ sudo apt install ./lg-gram-fingerprint_*_amd64.deb
 **From source** (Debian/Ubuntu):
 
 ```sh
-git clone https://github.com/OWNER/lg-gram-fingerprint-linux && cd lg-gram-fingerprint-linux
+git clone https://github.com/vietnqw/lg-gram-fingerprint-linux && cd lg-gram-fingerprint-linux
 ./install.sh
 ```
 
