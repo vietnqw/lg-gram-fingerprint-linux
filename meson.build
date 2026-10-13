@@ -14,7 +14,7 @@ crypto = dependency('libcrypto', version: '>= 3.0')
 
 core_inc = include_directories('src')
 core = static_library('geneva-core',
-  'src/error.c', 'src/proto.c', 'src/tls.c', 'src/device.c', 'src/sensor.c', 'src/hw.c',
+  'src/error.c', 'src/proto.c', 'src/tls.c', 'src/device.c', 'src/sensor.c', 'src/hw.c', 'src/provision.c',
   include_directories: core_inc,
   dependencies: [glib, gio, crypto],
   pic: true)

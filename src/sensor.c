@@ -104,9 +104,8 @@ check_firmware_and_psk (GvSensor *s, char **firmware, gboolean *psk_ok,
     return FALSE;
   d = g_bytes_get_data (fw, &n);
   *firmware = g_strndup ((const char *) d, n);
-  if (!g_str_has_prefix (*firmware, "GF3268"))
-    return TRUE;
 
+  /* Works both in the app and in the IAP bootloader. */
   pmk = command (s, GV_CMD_PSK_READ, psk_req, sizeof psk_req, CMD_TIMEOUT_MS, cancellable, error);
   if (!pmk)
     return FALSE;
@@ -496,11 +495,27 @@ gv_sensor_wait_lift (GvSensor *s, GCancellable *cancellable, GError **error)
 }
 
 gboolean
-gv_sensor_status (GvSensor *s, char **firmware, gboolean *psk_ok,
+gv_sensor_status (GvSensor *s, gboolean reset, char **firmware, gboolean *psk_ok,
                   GCancellable *cancellable, GError **error)
 {
   gv_sensor_invalidate (s);
   *psk_ok = FALSE;
-  return gv_device_reset (s->dev, error) &&
-         check_firmware_and_psk (s, firmware, psk_ok, cancellable, error);
+  if (reset && !gv_device_reset (s->dev, error))
+    return FALSE;
+  return check_firmware_and_psk (s, firmware, psk_ok, cancellable, error);
+}
+
+GBytes *
+gv_sensor_command (GvSensor *s, guint8 cmd, const guint8 *payload, gsize len,
+                   guint timeout_ms, GCancellable *cancellable, GError **error)
+{
+  gv_sensor_invalidate (s);
+  return command (s, cmd, payload, len, timeout_ms, cancellable, error);
+}
+
+gboolean
+gv_sensor_reset (GvSensor *s, GError **error)
+{
+  gv_sensor_invalidate (s);
+  return gv_device_reset (s->dev, error);
 }

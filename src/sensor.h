@@ -31,8 +31,15 @@ gboolean  gv_sensor_capture (GvSensor *sensor, guint16 *frame, guint16 *backgrou
 /* Wait until the finger is lifted (and refresh the background frame). */
 gboolean  gv_sensor_wait_lift (GvSensor *sensor, GCancellable *cancellable, GError **error);
 
-/* Diagnostics for geneva-fp-tool. */
-gboolean  gv_sensor_status (GvSensor *sensor, char **firmware, gboolean *psk_ok,
+/* Low-level access for provisioning: a plaintext command and its reply (timeout 0 = wait
+ * until cancelled), and a hardware reset. Both drop the TLS session. */
+GBytes   *gv_sensor_command (GvSensor *sensor, guint8 cmd, const guint8 *payload, gsize len,
+                             guint timeout_ms, GCancellable *cancellable, GError **error);
+gboolean  gv_sensor_reset (GvSensor *sensor, GError **error);
+
+/* Firmware version string and whether the chip holds our PSK (works in the app and in the
+ * IAP bootloader); optionally reset the chip first. */
+gboolean  gv_sensor_status (GvSensor *sensor, gboolean reset, char **firmware, gboolean *psk_ok,
                             GCancellable *cancellable, GError **error);
 
 /* Mean background-minus-frame signal; a real finger gives several hundred counts. */

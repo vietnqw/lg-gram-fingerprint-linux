@@ -9,9 +9,13 @@
 
 #include "error.h"
 #include "hw.h"
+#include "provision.h"
 #include "sensor.h"
 
 static char *opt_config = NULL;
+static char *opt_out = NULL;
+static gboolean opt_yes = FALSE;
+static gboolean opt_force = FALSE;
 
 static GvSensor *
 open_sensor (gboolean need_config, GError **error)
@@ -37,7 +41,7 @@ cmd_status (int argc, char **argv, GError **error)
   guint8 cfg[GV_CFG_SIZE];
   g_autoptr(GError) cfg_err = NULL;
 
-  if (!s || !gv_sensor_status (s, &fw, &psk_ok, NULL, error))
+  if (!s || !gv_sensor_status (s, TRUE, &fw, &psk_ok, NULL, error))
     return 1;
   printf ("firmware:       %s\n", fw);
   printf ("paired (PSK):   %s\n", psk_ok ? "yes" : "NO - run `sudo geneva-fp-tool provision`");
@@ -91,12 +95,89 @@ cmd_capture (int argc, char **argv, GError **error)
   return 0;
 }
 
+static int
+cmd_extract (int argc, char **argv, GError **error)
+{
+  const char *out = opt_out ? opt_out : GV_DATA_DIR;
+
+  if (argc < 2)
+    {
+      fprintf (stderr, "usage: geneva-fp-tool extract <LG driver .zip or Wbdi.dll>\n"
+                       "Download \"Fingerprint Driver\" 3.1.100.320 for your LG gram from LG's support site.\n");
+      return 2;
+    }
+  if (!gv_extract (argv[1], out, error))
+    return 1;
+  printf ("Extracted sensor configuration and firmware to %s\n", out);
+  return 0;
+}
+
+static void
+progress (const char *step, double fraction, gpointer user_data)
+{
+  printf ("\r  [%3.0f%%] %-40s", fraction * 100, step);
+  if (fraction >= 1.0)
+    printf ("\n");
+  fflush (stdout);
+}
+
+static int
+cmd_provision (int argc, char **argv, GError **error)
+{
+  g_autoptr(GvSensor) s = open_sensor (FALSE, error);
+  g_autofree char *fw = NULL;
+  g_autofree char *image = NULL;
+  gsize len = 0;
+  gboolean psk_ok = FALSE;
+  char answer[16] = "";
+
+  if (!s || !gv_sensor_status (s, TRUE, &fw, &psk_ok, NULL, error))
+    return 1;
+  if (g_str_has_prefix (fw, "GF3268") && psk_ok && !opt_force)
+    {
+      printf ("The sensor is already paired with Linux; nothing to do (--force to redo).\n");
+      return 0;
+    }
+  if (!g_file_get_contents (GV_FIRMWARE_PATH, &image, &len, NULL) || len != GV_FIRMWARE_SIZE)
+    {
+      g_set_error (error, GV_ERROR, GV_ERROR_NO_FIRMWARE,
+                   "%s missing; run `sudo geneva-fp-tool extract <LG driver>` first", GV_FIRMWARE_PATH);
+      return 1;
+    }
+
+  printf ("Current firmware: %s, paired with Linux: %s\n\n", fw, psk_ok ? "yes" : "no");
+  printf ("This pairs the fingerprint sensor with Linux. It erases the sensor's application,\n"
+          "writes a new pairing key and reflashes the same firmware (about 30 seconds).\n"
+          "Do not suspend or power off meanwhile. If it is interrupted, simply run it again.\n\n"
+          "Windows Hello fingerprint will stop working until LG's Windows driver re-pairs the\n"
+          "sensor (it does that automatically); after that, run this command again in Linux.\n\n");
+  if (!opt_yes)
+    {
+      printf ("Type 'yes' to continue: ");
+      fflush (stdout);
+      if (!fgets (answer, sizeof answer, stdin) || !g_str_equal (g_strstrip (answer), "yes"))
+        {
+          printf ("Aborted.\n");
+          return 1;
+        }
+    }
+  if (!gv_provision (s, (const guint8 *) image, len, progress, NULL, error))
+    {
+      printf ("\n");
+      return 1;
+    }
+  printf ("Sensor paired. You can now enroll fingers (e.g. `fprintd-enroll`).\n");
+  return 0;
+}
+
 static const struct {
   const char *name, *args, *help;
   int (*fn)(int argc, char **argv, GError **error);
 } commands[] = {
   { "status", "", "show firmware, pairing and configuration state", cmd_status },
   { "capture", "[FILE.pgm]", "capture one fingerprint image", cmd_capture },
+  { "extract", "LG-DRIVER", "extract sensor config + firmware from LG's driver", cmd_extract },
+  { "provision", "", "pair the sensor with Linux (one-time, reflashes it)", cmd_provision },
 };
 
 int
@@ -107,6 +188,9 @@ main (int argc, char **argv)
   g_autoptr(GError) error = NULL;
   GOptionEntry entries[] = {
     { "config", 'c', 0, G_OPTION_ARG_FILENAME, &opt_config, "Sensor configuration file", "FILE" },
+    { "out", 'o', 0, G_OPTION_ARG_FILENAME, &opt_out, "Output directory for extract", "DIR" },
+    { "yes", 'y', 0, G_OPTION_ARG_NONE, &opt_yes, "Do not ask for confirmation", NULL },
+    { "force", 'f', 0, G_OPTION_ARG_NONE, &opt_force, "Provision even if already paired", NULL },
     { NULL }
   };
 
