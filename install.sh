@@ -12,6 +12,9 @@ die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 [ -e /sys/bus/acpi/devices/GXFP5A8B:00 ] ||
   die "no Goodix GXFP5A8B sensor found on this machine (ACPI GXFP5A8B:00)"
+if ls /usr/local/lib/*/libfprint-2.so* /usr/local/lib/libfprint-2.so* >/dev/null 2>&1; then
+  die "a libfprint build is installed in /usr/local and would shadow the system one; remove it first"
+fi
 command -v apt-get >/dev/null || die "this script supports Debian/Ubuntu (apt); see README for other distributions"
 
 say "Installing build dependencies"

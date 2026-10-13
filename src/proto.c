@@ -57,11 +57,17 @@ gv_msg_decode (const guint8 *buf, gsize buf_len,
                guint8 *cmd, const guint8 **data, gsize *data_len)
 {
   gsize len;
+  guint8 sum = 0;
 
   if (buf_len < 4)
     return FALSE;
   len = buf[1] | (buf[2] << 8);       /* payload + checksum */
   if (len < 1 || len + 3 > buf_len)
+    return FALSE;
+  for (gsize i = 0; i < len + 2; i++)
+    sum += buf[i];
+  /* 0x88 is the "no checksum" marker some Goodix MCUs use */
+  if ((guint8) (0xaa - sum) != buf[len + 2] && buf[len + 2] != 0x88)
     return FALSE;
   *cmd = buf[0];
   *data = buf + 3;

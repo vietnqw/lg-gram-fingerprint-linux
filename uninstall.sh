@@ -16,6 +16,7 @@ else
     /usr/share/pam-configs/geneva-fp
 fi
 sudo pam-auth-update --package >/dev/null 2>&1 || true
+sudo udevadm control --reload-rules
 sudo systemctl daemon-reload
 sudo systemctl try-restart fprintd.service || true
 

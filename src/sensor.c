@@ -9,6 +9,7 @@
 #define POLL_MS          20
 #define CMD_TIMEOUT_MS   2000
 #define MIN_SIGNAL       150.0      /* mean(bg - frame) of a real touch is ~600-850 */
+#define FINGER_FDT_DROP  15.0       /* idle FDT channels ~345, a finger takes them to ~260 */
 
 const guint8 gv_pmk_hash_psk0[32] = {
   0x66, 0x68, 0x7a, 0xad, 0xf8, 0x62, 0xbd, 0x77, 0x6c, 0x8f, 0xc1, 0x8b, 0x8e, 0x9f, 0x8e, 0x20,
@@ -22,6 +23,7 @@ struct _GvSensor
   GvTls    *tls;                       /* NULL = no session */
   guint8    fdt_base[2 * GV_FDT_CHANNELS];
   guint16   bg[GV_IMG_PIXELS];
+  double    idle_level;                /* mean FDT channel value with no finger (0 = unknown) */
   gboolean  have_bg;
 };
 
@@ -56,15 +58,24 @@ send_tls (GvSensor *s, GBytes *records, GError **error)
 }
 
 /* Send a plaintext command and wait for the chip's reply to it (skipping its ACK).
- * timeout_ms == 0 waits until cancelled. */
+ * timeout_ms == 0 waits until cancelled.
+ *
+ * The mailbox still holds the previous reply until the chip writes a new one, so a reply is
+ * only taken once it differs from what was there before sending, or follows our ACK; an
+ * identical reply is accepted after STALE_MS (e.g. repeated polls with the same answer). */
+#define STALE_MS 300
+
 static GBytes *
 command (GvSensor *s, guint8 cmd, const guint8 *payload, gsize len, guint timeout_ms,
          GCancellable *cancellable, GError **error)
 {
-  gint64 deadline = g_get_monotonic_time () + (gint64) timeout_ms * 1000;
-  guint8 buf[512];
+  gint64 start = g_get_monotonic_time ();
+  gint64 deadline = start + (gint64) timeout_ms * 1000;
+  guint8 before[512], buf[512];
+  gboolean acked = FALSE;
 
-  if (!send_msg (s, cmd, payload, len, error))
+  if (!gv_device_read (s->dev, before, sizeof before, error) ||
+      !send_msg (s, cmd, payload, len, error))
     return NULL;
   for (;;)
     {
@@ -78,9 +89,15 @@ command (GvSensor *s, guint8 cmd, const guint8 *payload, gsize len, guint timeou
         return gv_error_null (error, GV_ERROR_TIMEOUT, "no reply to command 0x%02x", cmd);
       if (!gv_device_read (s->dev, buf, sizeof buf, error))
         return NULL;
-      if (!gv_pack_decode (buf, sizeof buf, &flag, &body, &body_len) || flag != GV_FLAG_PLAIN)
+      if (!gv_pack_decode (buf, sizeof buf, &flag, &body, &body_len) || flag != GV_FLAG_PLAIN ||
+          !gv_msg_decode (body, body_len, &rcmd, &data, &data_len))
         continue;
-      if (!gv_msg_decode (body, body_len, &rcmd, &data, &data_len) || rcmd != cmd)
+      if (rcmd == GV_CMD_ACK && data_len >= 1 && data[0] == cmd)
+        acked = TRUE;
+      if (rcmd != cmd)
+        continue;
+      if (!acked && memcmp (buf, before, 4 + body_len) == 0 &&
+          g_get_monotonic_time () - start < STALE_MS * 1000)
         continue;
       return g_bytes_new (data, data_len);
     }
@@ -115,7 +132,7 @@ check_firmware_and_psk (GvSensor *s, char **firmware, gboolean *psk_ok,
 }
 
 /* The chip's TX mailbox survives a reset, so the previous session's packs may still be there:
- * only accept records that were not in the mailbox before we asked. */
+ * only accept TLS packs that were not in the mailbox before we asked (and not twice). */
 static gboolean
 mailbox_record (const guint8 *buf, gsize len, GPtrArray *seen, GByteArray *out)
 {
@@ -151,6 +168,23 @@ mailbox_record (const guint8 *buf, gsize len, GPtrArray *seen, GByteArray *out)
   return got;
 }
 
+/* The client flight is complete once it has a ChangeCipherSpec followed by a handshake
+ * record (the encrypted Finished). */
+static gboolean
+flight_complete (const guint8 *d, gsize len)
+{
+  gboolean ccs = FALSE;
+
+  for (gsize o = 0; o + 5 <= len; o += 5 + ((d[o + 3] << 8) | d[o + 4]))
+    {
+      if (d[o] == GV_TLS_CT_CCS)
+        ccs = TRUE;
+      else if (ccs && d[o] == GV_TLS_CT_HANDSHAKE)
+        return TRUE;
+    }
+  return FALSE;
+}
+
 static gboolean
 handshake (GvSensor *s, GCancellable *cancellable, GError **error)
 {
@@ -163,12 +197,16 @@ handshake (GvSensor *s, GCancellable *cancellable, GError **error)
   g_autoptr(GvTls) tls = NULL;
   guint8 buf[2048];
   gint64 deadline;
-  guint records = 0;
 
-  /* Remember what is already in the mailbox, then ask for a new session (ClientHello). */
+  /* Remember what is already in the mailbox, then ask for a new session (ClientHello).
+   * A ChangeCipherSpec record is identical in every session, so a stale one is not
+   * remembered (it must not hide the new one). */
   if (!gv_device_read (s->dev, buf, sizeof buf, error))
     return FALSE;
   mailbox_record (buf, sizeof buf, seen, stale);
+  for (guint i = seen->len; i > 0; i--)
+    if (((const guint8 *) g_bytes_get_data (g_ptr_array_index (seen, i - 1), NULL))[0] == GV_TLS_CT_CCS)
+      g_ptr_array_remove_index (seen, i - 1);
   if (!send_msg (s, GV_CMD_REQUEST_TLS, zero2, 2, error))
     return FALSE;
   deadline = g_get_monotonic_time () + 3 * G_USEC_PER_SEC;
@@ -189,17 +227,13 @@ handshake (GvSensor *s, GCancellable *cancellable, GError **error)
     return FALSE;
   g_clear_pointer (&out, g_bytes_unref);
 
-  /* ClientKeyExchange, ChangeCipherSpec, Finished: one record per pack. */
+  /* ClientKeyExchange, ChangeCipherSpec, Finished (normally one record per pack). */
   deadline = g_get_monotonic_time () + 4 * G_USEC_PER_SEC;
-  while (records < 3)
+  while (!flight_complete (flight->data, flight->len))
     {
-      guint before;
-
       if (!nap (POLL_MS, cancellable, error) || !gv_device_read (s->dev, buf, sizeof buf, error))
         return FALSE;
-      before = seen->len;
       mailbox_record (buf, sizeof buf, seen, flight);
-      records += seen->len - before;
       if (g_get_monotonic_time () > deadline)
         return gv_error_false (error, GV_ERROR_TIMEOUT, "incomplete TLS flight from sensor");
     }
@@ -256,6 +290,7 @@ start (GvSensor *s, GCancellable *cancellable, GError **error)
   if (s->tls)
     return TRUE;
   s->have_bg = FALSE;
+  s->idle_level = 0;
   if (!gv_device_reset (s->dev, error) ||
       !check_firmware_and_psk (s, &fw, &psk_ok, cancellable, error))
     return FALSE;
@@ -292,7 +327,12 @@ grab (GvSensor *s, guint16 *px, GCancellable *cancellable, GError **error)
     return FALSE;
   for (;;)
     {
-      if (!nap (30, cancellable, error) || !gv_device_read (s->dev, head, sizeof head, error))
+      if (!nap (30, cancellable, error))
+        {
+          gv_sensor_invalidate (s);           /* the image record would stay unread */
+          return FALSE;
+        }
+      if (!gv_device_read (s->dev, head, sizeof head, error))
         return FALSE;
       if (head[0] == GV_FLAG_TLS_DATA && ((head[0] + head[1] + head[2]) & 0xff) == head[3])
         break;
@@ -304,15 +344,15 @@ grab (GvSensor *s, guint16 *px, GCancellable *cancellable, GError **error)
 
   {
     /* The B2 pack is [9-byte prefix][TLS record]; in our read the record starts ~1.4 KB in,
-     * so read generously and locate it by its header. */
+     * so read generously and locate it by its header (and MAC). */
     gsize len = 4 + (head[1] | (head[2] << 8)) + 4096;
     g_autofree guint8 *buf = g_malloc (len);
-    g_autoptr(GBytes) img = NULL;
 
     if (!gv_device_read (s->dev, buf, len, error))
       return FALSE;
     for (gsize j = 4; j + 5 <= len; j++)
       {
+        g_autoptr(GBytes) img = NULL;
         gsize rl;
 
         if (buf[j] != GV_TLS_CT_APPDATA || buf[j + 1] != 3 || buf[j + 2] != 3)
@@ -320,24 +360,26 @@ grab (GvSensor *s, guint16 *px, GCancellable *cancellable, GError **error)
         rl = (buf[j + 3] << 8) | buf[j + 4];
         if (rl < GV_IMG_PLAIN || j + 5 + rl > len)
           continue;
-        img = gv_tls_decrypt (s->tls, GV_TLS_CT_APPDATA, buf + j + 5, rl, error);
-        if (!img)
-          return FALSE;
-        if (g_bytes_get_size (img) < GV_IMG_PACKED)
-          return gv_error_false (error, GV_ERROR_PROTO, "short image (%zu bytes)", g_bytes_get_size (img));
+        img = gv_tls_decrypt (s->tls, GV_TLS_CT_APPDATA, buf + j + 5, rl, NULL);
+        if (!img || g_bytes_get_size (img) < GV_IMG_PACKED)
+          continue;
         gv_image_decode (g_bytes_get_data (img, NULL), px);
         return TRUE;
       }
   }
-  return gv_error_false (error, GV_ERROR_PROTO, "image record not found");
+  return gv_error_false (error, GV_ERROR_PROTO, "no valid image record from sensor");
 }
 
+/* Measure the no-finger state: FDT detection base + background frame. A finger still
+ * (partly) on the sensor lowers the FDT channels; such a measurement would make the next
+ * touch undetectable, so keep the previous baseline instead. */
 static gboolean
 background (GvSensor *s, GCancellable *cancellable, GError **error)
 {
   guint8 req[2 + 2 * GV_FDT_CHANNELS] = { 0x0d, 0x01 };
   guint16 ch[GV_FDT_CHANNELS];
   g_autoptr(GBytes) r = NULL;
+  double level = 0;
 
   for (int i = 0; i < GV_FDT_CHANNELS; i++)
     req[2 + 2 * i] = 0x80;
@@ -346,11 +388,20 @@ background (GvSensor *s, GCancellable *cancellable, GError **error)
     return FALSE;
   if (!gv_fdt_channels (g_bytes_get_data (r, NULL), g_bytes_get_size (r), ch))
     return gv_error_false (error, GV_ERROR_PROTO, "bad finger-detect reply");
+  for (int i = 0; i < GV_FDT_CHANNELS; i++)
+    level += ch[i] / (double) GV_FDT_CHANNELS;
+  if (s->have_bg && s->idle_level > 0 && level < s->idle_level - FINGER_FDT_DROP)
+    {
+      g_debug ("finger still present (FDT %.0f < idle %.0f), keeping the previous baseline",
+               level, s->idle_level);
+      return TRUE;
+    }
   gv_fdt_base (ch, s->fdt_base);
   if (!grab (s, s->bg, cancellable, error))
     return FALSE;
+  s->idle_level = level;
   s->have_bg = TRUE;
-  g_debug ("background frame taken");
+  g_debug ("background frame taken (FDT level %.0f)", level);
   return TRUE;
 }
 
@@ -370,6 +421,14 @@ wait_fdt (GvSensor *s, guint8 cmd, GCancellable *cancellable, GError **error)
   req[0] = cmd == GV_CMD_FDT_DOWN ? 0x0c : 0x0e;
   g_debug ("waiting for finger %s", cmd == GV_CMD_FDT_DOWN ? "down" : "up");
   r = command (s, cmd, req, sizeof req, 0, cancellable, error);
+  if (r)
+    {
+      guint16 ch[GV_FDT_CHANNELS] = { 0 };
+
+      gv_fdt_channels (g_bytes_get_data (r, NULL), g_bytes_get_size (r), ch);
+      g_debug ("finger %s detected (channels %u %u %u %u ...)",
+               cmd == GV_CMD_FDT_DOWN ? "down" : "up", ch[0], ch[1], ch[2], ch[3]);
+    }
   return r != NULL;
 }
 
@@ -486,7 +545,9 @@ gv_sensor_wait_lift (GvSensor *s, GCancellable *cancellable, GError **error)
 
   if (!s->tls || !s->have_bg)
     return TRUE;                          /* no session: nothing is armed */
-  if (wait_fdt (s, GV_CMD_FDT_UP, cancellable, &e) && background (s, cancellable, &e))
+  /* let the finger come off completely before measuring the no-finger state */
+  if (wait_fdt (s, GV_CMD_FDT_UP, cancellable, &e) && nap (200, cancellable, &e) &&
+      background (s, cancellable, &e))
     return TRUE;
   if (!cancelled (e))
     gv_sensor_invalidate (s);

@@ -22,6 +22,9 @@ test_msg_and_pack (void)
   g_assert_cmpint (cmd, ==, 0xd0);
   g_assert_cmpmem (data, data_len, zero2, 2);
 
+  pack[8] ^= 1;                                      /* corrupted payload */
+  g_assert_false (gv_msg_decode (body, body_len, &cmd, &data, &data_len));
+  pack[8] ^= 1;
   pack[3] ^= 1;                                      /* bad header checksum */
   g_assert_false (gv_pack_decode (pack, n, &flag, &body, &body_len));
   g_assert_false (gv_pack_decode (want, 5, &flag, &body, &body_len));   /* truncated */

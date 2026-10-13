@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 #include <gio/gio.h>
 
 #include "error.h"
@@ -43,11 +44,13 @@ cmd_status (int argc, char **argv, GError **error)
 
   if (!s || !gv_sensor_status (s, TRUE, &fw, &psk_ok, NULL, error))
     return 1;
-  printf ("firmware:       %s\n", fw);
+  gboolean app = g_str_has_prefix (fw, "GF3268");
+
+  printf ("firmware:       %s%s\n", fw, app ? "" : "  (NOT running the application - run `sudo geneva-fp-tool provision`)");
   printf ("paired (PSK):   %s\n", psk_ok ? "yes" : "NO - run `sudo geneva-fp-tool provision`");
   printf ("sensor config:  %s\n", gv_config_load (opt_config ? opt_config : GV_CONFIG_PATH, cfg, &cfg_err)
           ? "ok" : cfg_err->message);
-  return psk_ok && !cfg_err ? 0 : 1;
+  return app && psk_ok && !cfg_err ? 0 : 1;
 }
 
 static void
@@ -161,11 +164,32 @@ cmd_provision (int argc, char **argv, GError **error)
           return 1;
         }
     }
-  if (!gv_provision (s, (const guint8 *) image, len, progress, NULL, error))
-    {
-      printf ("\n");
-      return 1;
-    }
+  {
+    /* Do not let Ctrl-C, a closed terminal or suspend interrupt the flash. */
+    sigset_t block, old;
+    g_autoptr(GSubprocess) inhibit = g_subprocess_new (G_SUBPROCESS_FLAGS_STDOUT_SILENCE |
+                                                       G_SUBPROCESS_FLAGS_STDERR_SILENCE, NULL,
+                                                       "systemd-inhibit", "--what=sleep:shutdown:idle",
+                                                       "--who=geneva-fp-tool",
+                                                       "--why=Reflashing the fingerprint sensor",
+                                                       "sleep", "600", NULL);
+    gboolean ok;
+
+    sigemptyset (&block);
+    sigaddset (&block, SIGINT);
+    sigaddset (&block, SIGTERM);
+    sigaddset (&block, SIGHUP);
+    sigprocmask (SIG_BLOCK, &block, &old);
+    ok = gv_provision (s, (const guint8 *) image, len, progress, NULL, error);
+    if (inhibit)
+      g_subprocess_force_exit (inhibit);
+    sigprocmask (SIG_SETMASK, &old, NULL);
+    if (!ok)
+      {
+        printf ("\n");
+        return 1;
+      }
+  }
   printf ("Sensor paired. You can now enroll fingers (e.g. `fprintd-enroll`).\n");
   return 0;
 }

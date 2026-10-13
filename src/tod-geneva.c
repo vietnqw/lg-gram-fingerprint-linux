@@ -27,6 +27,7 @@ struct _FpiDeviceGeneva
 
   GvSensor  *sensor;             /* only touched from worker threads, one task at a time */
   gint64     sleep_mark;         /* CLOCK_BOOTTIME - CLOCK_MONOTONIC at last use */
+  gboolean   finger_down;        /* last capture saw a finger that has not been lifted yet */
 
   /* current action */
   GPtrArray *templates;          /* enroll: GBytes of captured features */
@@ -156,12 +157,26 @@ capture_thread (GTask *task, gpointer source, gpointer data, GCancellable *cance
   GError *error = NULL;
 
   check_resumed (self);
+  /* A finger still resting from the previous attempt must not count as a new touch
+   * (e.g. PAM retrying right after a no-match). */
+  if (self->finger_down)
+    {
+      fp_dbg ("waiting for the previous finger to lift");
+      if (!gv_sensor_wait_lift (self->sensor, cancellable, &error))
+        {
+          capture_free (c);
+          g_task_return_error (task, error);
+          return;
+        }
+      self->finger_down = FALSE;
+    }
   if (!gv_sensor_capture (self->sensor, frame, bg, &c->result, cancellable, &error))
     {
       capture_free (c);
       g_task_return_error (task, error);
       return;
     }
+  self->finger_down = TRUE;
   if (c->result == GV_CAPTURE_OK)
     {
       c->features = gv_features_extract (bg, frame);
@@ -183,7 +198,10 @@ lift_thread (GTask *task, gpointer source, gpointer data, GCancellable *cancella
 
   check_resumed (self);
   if (gv_sensor_wait_lift (self->sensor, cancellable, &error))
-    g_task_return_boolean (task, TRUE);
+    {
+      self->finger_down = FALSE;
+      g_task_return_boolean (task, TRUE);
+    }
   else
     g_task_return_error (task, error);
 }
@@ -409,6 +427,7 @@ fpi_device_geneva_class_init (FpiDeviceGenevaClass *klass)
   dc->id_table = id_table;
   dc->scan_type = FP_SCAN_TYPE_PRESS;
   dc->nr_enroll_stages = ENROLL_STAGES;
+  dc->temp_hot_seconds = -1;     /* capacitive sensor, idles in MCU finger-detect: no heat issue */
 
   dc->probe = dev_probe;
   dc->open = dev_open;

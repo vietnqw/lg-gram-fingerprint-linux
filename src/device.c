@@ -78,8 +78,9 @@ gv_device_open (const char *spidev, const char *gpiochip, guint reset_line, GErr
       int e = errno;
 
       close (chip);
-      return gv_error_null (error, GV_ERROR_IO, "request reset line %s:%u: %s",
-                            gpiochip, reset_line, g_strerror (e));
+      return gv_error_null (error, GV_ERROR_IO, "request reset line %s:%u: %s%s",
+                            gpiochip, reset_line, g_strerror (e),
+                            e == EBUSY ? " (in use by fprintd? try `sudo systemctl stop fprintd`)" : "");
     }
   close (chip);
   dev->reset_fd = req.fd;

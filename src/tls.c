@@ -4,7 +4,6 @@
 
 #include <string.h>
 #include <openssl/evp.h>
-#include <openssl/hmac.h>
 #include <openssl/rand.h>
 #include <openssl/crypto.h>
 
@@ -136,7 +135,8 @@ gv_tls_on_client_hello (GvTls *tls, const guint8 *rec, gsize len, GError **error
   g_checksum_reset (tls->transcript);
   g_checksum_update (tls->transcript, hs, hs_len);
   memcpy (tls->client_random, hs + 6, 32);
-  RAND_bytes (tls->server_random, 32);
+  if (RAND_bytes (tls->server_random, 32) != 1)
+    return gv_error_null (error, GV_ERROR_PROTO, "no randomness available");
 
   /* ServerHello: TLS 1.2, empty session id, 0x00AE, no compression, no extensions.
    * Kept minimal on purpose: the chip appends every pack to a small RX buffer. */
@@ -264,8 +264,8 @@ gv_tls_encrypt (GvTls *tls, guint8 type, const guint8 *data, gsize len)
   memcpy (p, data, len);
   record_mac (tls->srv_mac, tls->srv_seq++, type, data, len, p + len);
   memset (p + plen, pad, pad + 1);
-  RAND_bytes (iv, sizeof iv);
-  aes_cbc (TRUE, tls->srv_key, iv, p, total, c);
+  if (RAND_bytes (iv, sizeof iv) != 1 || !aes_cbc (TRUE, tls->srv_key, iv, p, total, c))
+    g_error ("geneva-fp: libcrypto failure while encrypting a TLS record");
 
   put_record_header (out, type, 16 + total);
   g_byte_array_append (out, iv, 16);
@@ -278,7 +278,7 @@ gv_tls_decrypt (GvTls *tls, guint8 type, const guint8 *body, gsize len, GError *
 {
   g_autofree guint8 *p = NULL;
   gsize ct_len, pad, dlen;
-  guint8 mac[32];
+  guint8 mac[32], bad = 0;
 
   if (len < 16 + 48 || (len - 16) % 16 != 0)
     return gv_error_null (error, GV_ERROR_PROTO, "bad TLS record length %zu", len);
@@ -288,10 +288,13 @@ gv_tls_decrypt (GvTls *tls, guint8 type, const guint8 *body, gsize len, GError *
     return gv_error_null (error, GV_ERROR_PROTO, "AES decrypt failed");
   pad = p[ct_len - 1];
   if (pad + 1 + 32 > ct_len)
-    return gv_error_null (error, GV_ERROR_PROTO, "bad TLS padding");
+    return gv_error_null (error, GV_ERROR_PROTO, "bad TLS record");
+  for (gsize i = ct_len - pad - 1; i < ct_len; i++)
+    bad |= p[i] ^ pad;
   dlen = ct_len - pad - 1 - 32;
-  record_mac (tls->cli_mac, tls->cli_seq++, type, p, dlen, mac);
-  if (CRYPTO_memcmp (mac, p + dlen, 32) != 0)
-    return gv_error_null (error, GV_ERROR_PROTO, "bad TLS record MAC");
+  record_mac (tls->cli_mac, tls->cli_seq, type, p, dlen, mac);
+  if ((CRYPTO_memcmp (mac, p + dlen, 32) | bad) != 0)
+    return gv_error_null (error, GV_ERROR_PROTO, "bad TLS record");
+  tls->cli_seq++;                       /* only a valid record consumes a sequence number */
   return g_bytes_new (p, dlen);
 }

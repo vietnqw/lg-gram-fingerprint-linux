@@ -123,6 +123,26 @@ status_ok (GBytes *r, guint8 want)
   return r && g_bytes_get_size (r) >= 1 && ((const guint8 *) g_bytes_get_data (r, NULL))[0] == want;
 }
 
+/* Once the app is erased the sensor only runs its bootloader until provisioning completes:
+ * say so, and how to recover. */
+static GError **
+gv_set (GError **error, char *msg)
+{
+  if (error && !*error)
+    *error = g_error_new_literal (GV_ERROR, GV_ERROR_PROTO, msg);
+  g_free (msg);
+  return error;
+}
+
+static gboolean
+in_bootloader (GError **error)
+{
+  if (error && *error)
+    g_prefix_error (error, "the sensor is left in its bootloader and has no firmware until "
+                           "provisioning succeeds; run `sudo geneva-fp-tool provision` again. ");
+  return FALSE;
+}
+
 gboolean
 gv_provision (GvSensor *s, const guint8 *firmware, gsize len,
               GvProgressFunc progress, gpointer user_data, GError **error)
@@ -138,15 +158,22 @@ gv_provision (GvSensor *s, const guint8 *firmware, gsize len,
   if (len != GV_FIRMWARE_SIZE)
     return gv_error_false (error, GV_ERROR_PROTO, "firmware image has the wrong size");
 
-  /* 1. Erase the app: the MCU drops into its IAP bootloader. */
-  progress ("Erasing sensor application", 0.0, user_data);
-  r = gv_sensor_command (s, GV_CMD_ERASE_APP, erase_req, sizeof erase_req, 6000, NULL, error);
-  if (!r)
+  /* 1. Erase the app: the MCU drops into its IAP bootloader (skip if it is there already,
+   *    e.g. after an interrupted run). */
+  if (!gv_sensor_status (s, TRUE, &fw, &psk_ok, NULL, error))
     return FALSE;
-  g_clear_pointer (&r, g_bytes_unref);
-  g_usleep (G_USEC_PER_SEC);
-  if (!gv_sensor_reset (s, error))
-    return FALSE;
+  if (g_str_has_prefix (fw, "GF3268"))
+    {
+      progress ("Erasing sensor application", 0.0, user_data);
+      r = gv_sensor_command (s, GV_CMD_ERASE_APP, erase_req, sizeof erase_req, 6000, NULL, error);
+      if (!r)
+        return FALSE;
+      g_clear_pointer (&r, g_bytes_unref);
+      g_usleep (G_USEC_PER_SEC);
+      if (!gv_sensor_reset (s, error))
+        return in_bootloader (error);
+    }
+  g_clear_pointer (&fw, g_free);
 
   /* 2. Write the all-zero PSK (white-box encoded) and check the PMK hash. */
   progress ("Writing pairing key", 0.1, user_data);
@@ -159,12 +186,12 @@ gv_provision (GvSensor *s, const guint8 *firmware, gsize len,
   memcpy (psk_req + 30, PSK_WHITE_BOX, sizeof PSK_WHITE_BOX);
   r = gv_sensor_command (s, GV_CMD_PSK_WRITE, psk_req, sizeof psk_req, 4000, NULL, error);
   if (!r)
-    return FALSE;
+    return in_bootloader (error);
   g_clear_pointer (&r, g_bytes_unref);
   if (!gv_sensor_status (s, FALSE, &fw, &psk_ok, NULL, error))
-    return FALSE;
+    return in_bootloader (error);
   if (!psk_ok)
-    return gv_error_false (error, GV_ERROR_PROTO, "pairing key was not accepted");
+    return in_bootloader (gv_set (error, g_strdup ("pairing key was not accepted")));
   g_clear_pointer (&fw, g_free);
 
   /* 3. Flash the app as the vendor's WriteApp does:
@@ -191,7 +218,7 @@ gv_provision (GvSensor *s, const guint8 *firmware, gsize len,
         {
           g_clear_pointer (&r, g_bytes_unref);
           if (++tries == 3)
-            return gv_error_false (error, GV_ERROR_PROTO, "firmware write failed at offset %zu", o);
+            return in_bootloader (gv_set (error, g_strdup_printf ("firmware write failed at offset %zu", o)));
         }
       g_clear_pointer (&r, g_bytes_unref);
     }
@@ -199,12 +226,12 @@ gv_provision (GvSensor *s, const guint8 *firmware, gsize len,
   /* 4. Boot it and check it runs with our key. */
   progress ("Starting sensor", 0.97, user_data);
   if (!gv_sensor_reset (s, error))
-    return FALSE;
+    return in_bootloader (error);
   g_usleep (2 * G_USEC_PER_SEC);
   if (!gv_sensor_status (s, FALSE, &fw, &psk_ok, NULL, error))
-    return FALSE;
+    return in_bootloader (error);
   if (!g_str_has_prefix (fw, "GF3268") || !psk_ok)
-    return gv_error_false (error, GV_ERROR_PROTO, "sensor did not start correctly (\"%s\")", fw);
+    return in_bootloader (gv_set (error, g_strdup_printf ("sensor did not start (\"%s\")", fw)));
   progress ("Done", 1.0, user_data);
   return TRUE;
 }
