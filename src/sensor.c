@@ -297,11 +297,11 @@ start (GvSensor *s, GCancellable *cancellable, GError **error)
   if (!g_str_has_prefix (fw, "GF3268"))
     return gv_error_false (error, GV_ERROR_NO_FIRMWARE,
                            "sensor is not running its application firmware (\"%s\"); "
-                           "run `sudo lg-gram-fp-tool provision`", fw);
+                           "run `sudo lg-gram-fp-tool setup`", fw);
   if (!psk_ok)
     return gv_error_false (error, GV_ERROR_NOT_PROVISIONED,
                            "sensor is paired with another OS (e.g. Windows re-keyed it); "
-                           "run `sudo lg-gram-fp-tool provision`");
+                           "run `sudo lg-gram-fp-tool setup`");
   otp = command (s, GV_CMD_READ_OTP, zero2, 2, CMD_TIMEOUT_MS, cancellable, error);
   if (!otp || !handshake (s, cancellable, error))
     return FALSE;

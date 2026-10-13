@@ -9,8 +9,8 @@ through the standard `fprintd` / PAM stack.
 - Matching uses [SIGFM](https://github.com/goodix-fp-linux-dev/libfprint/tree/sigfm) (SIFT
   keypoints). The 108×88 sensor is too small for libfprint's minutiae matcher.
 - `lg-gram-fp-tool` handles setup and diagnostics.
-- No proprietary files are shipped. The sensor configuration and firmware are extracted from
-  LG's own Windows driver, which you download from LG.
+- No proprietary files are shipped. Setup downloads the vendor driver from Microsoft Update
+  and keeps only the sensor's settings and firmware, on your machine.
 - Clean-room, from reverse engineering. The protocol is documented in
   [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
@@ -43,51 +43,48 @@ Other laptops with `GXFP5A8B` should work too. Please open an issue with the out
 
 ```sh
 sudo apt install ./lg-gram-fingerprint_*_amd64.deb
+sudo lg-gram-fp-tool setup
 ```
 
-**From source** (Debian/Ubuntu):
+Then enroll a finger in **Settings → Users → Fingerprint Login**, or with `fprintd-enroll`.
+You're done.
+
+**From source** (Debian/Ubuntu), one command builds, installs and runs the setup:
 
 ```sh
 git clone https://github.com/vietnqw/lg-gram-fingerprint-linux && cd lg-gram-fingerprint-linux
 ./install.sh
 ```
 
-## Setup (once)
+### What `setup` does
 
-1. **Get LG's driver.** Download LG's Windows "Fingerprint Driver" **3.1.100.320**
-   (`GD_FP_W106_15_3.1.100.320.zip`) from LG's support page for your gram.
-2. **Extract** the sensor configuration and firmware from it:
-   ```sh
-   sudo lg-gram-fp-tool extract GD_FP_W106_15_3.1.100.320.zip
-   ```
-3. **Pair the sensor with Linux.** Windows locks the sensor to itself with a random key.
-   This step erases the sensor's application, writes a known key and reflashes the same
-   firmware. It takes about 30 seconds. If it is interrupted, run it again.
-   ```sh
-   sudo lg-gram-fp-tool provision
-   ```
-4. **Enroll** a finger (12 touches), and enable fingerprint authentication:
-   ```sh
-   fprintd-enroll
-   sudo pam-auth-update --enable lg-gram-fingerprint   # 3 tries, then password
-   ```
+It asks before each step:
 
-`sudo lg-gram-fp-tool status` shows the state of all of this at any time.
+1. **Downloads the sensor configuration.** The sensor needs a few settings that only exist inside
+   the Goodix Windows driver, the one LG ships. They are copyrighted, so they are not included
+   here. `setup` downloads that driver from Microsoft's official Windows Update server (1.5 MB),
+   checks it, and keeps only the sensor settings and firmware. For offline use, pass
+   `--driver GD_FP_W106_15_3.1.100.320.zip` with the file from LG's support site.
+2. **Pairs the sensor with Linux.** Windows locks the sensor to itself with a random key. Setup
+   gives it a new key and reflashes the sensor's own firmware. This takes about 30 seconds and
+   is safe to re-run if interrupted.
+3. **Turns on fingerprint for `sudo` and login**, if you want it (3 tries, then your
+   password).
+
+`sudo lg-gram-fp-tool status` shows the state at any time.
 
 ### Dual boot with Windows
 
-Windows' LG driver re-pairs the sensor with Windows automatically. After you have used
-fingerprint in Windows, Linux reports *"sensor is paired with another OS"*. Run
-`sudo lg-gram-fp-tool provision` again; your enrolled fingers stay valid. Going back,
-Windows re-pairs itself again on its own.
+If you use the fingerprint in Windows, Windows takes the sensor back automatically, and Linux
+then reports *"sensor is paired with another OS"*. Run `sudo lg-gram-fp-tool setup` again;
+your enrolled fingers stay valid.
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
 | `fprintd-list` shows no device | `sudo lg-gram-fp-tool status`. If no spidev node is found, reboot once after installing. |
-| "sensor configuration missing" | run `lg-gram-fp-tool extract` (setup step 2) |
-| "paired with another OS" | run `lg-gram-fp-tool provision` (setup step 3) |
+| "sensor configuration missing" or "paired with another OS" | run `sudo lg-gram-fp-tool setup` |
 | frequent "try again" | press the whole pad flat, and enroll more placements of the same finger |
 | `fprintd-verify` rejects your 2nd finger | expected: it checks only the first finger unless you pass `-f any`. PAM always uses all fingers. |
 
@@ -122,5 +119,5 @@ LGPL-2.1-or-later, see [LICENSE](LICENSE) and [NOTICE](NOTICE).
   goodix-fp-dump (MIT) documented the Goodix message format and white-box PSK.
 - The GXFP5187/51A7 protocol notes by delitdesnoyers06-del.
 
-Not affiliated with Goodix or LG. Use at your own risk; the provisioning step reflashes the
+Not affiliated with Goodix or LG. Use at your own risk; pairing reflashes the
 sensor's MCU with the vendor's own firmware.

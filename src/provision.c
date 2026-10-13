@@ -4,8 +4,16 @@
 #include "hw.h"
 
 #include <string.h>
+#include <glib/gstdio.h>
 
-/* LG GD_FP_W106 3.1.100.320 (2019-09-10): Wbdi.dll and the blobs we take from it. */
+/* Goodix driver 3.1.100.320 (2019-09-10), the one LG ships for the 2020 grams. Microsoft
+ * distributes the identical package through Windows Update; setup downloads it from there. */
+static const char DRIVER_CAB_URL[] =
+  "https://catalog.s.download.windowsupdate.com/c/msdownload/update/driver/drvs/2019/12/"
+  "93885a6c-2f43-4992-9df4-1007d8e11d41_dd7e75b027e6e1347bcb82015dcbef3a4c42088b.cab";
+static const char DRIVER_CAB_SHA256[] = "dba78fdc5fd862f4ad67e8499fa1c571ca2d2cc3e13cff46eb87fde1d1032374";
+
+/* Wbdi.dll and the blobs we take from it. */
 static const char WBDI_SHA256[] = "7437c02cabd69f25eaeced55f901b965625b9fcbb7fb45ebd2c32a5d9e4e609a";
 #define CONFIG_OFFSET    0x11a6c0      /* VA 0x18011bcc0, GF3268 config (stored checksum is stale) */
 #define FIRMWARE_OFFSET  0xf86fa       /* VA 0x1800f9cfa, GF3268_GM168SEC_APP_20011 image */
@@ -28,6 +36,21 @@ static const guint8 PSK_PRE_FLAGS[10] = { 0x56, 0xa5, 0xbb, 0x95, 0x6b, 0x7c, 0x
 /* ---------- extract ---------- */
 
 static GBytes *
+run_capture (const char * const *argv, GError **error)
+{
+  g_autoptr(GSubprocess) p = NULL;
+  g_autoptr(GBytes) out = NULL;
+
+  p = g_subprocess_newv (argv, G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE, error);
+  if (!p || !g_subprocess_communicate (p, NULL, NULL, &out, NULL, error))
+    return NULL;
+  if (!g_subprocess_get_successful (p) || !out || g_bytes_get_size (out) == 0)
+    return gv_error_null (error, GV_ERROR_IO, "`%s` failed", argv[0]);
+  return g_steal_pointer (&out);
+}
+
+/* Wbdi.dll from Microsoft's .cab, LG's .zip, or the DLL itself. */
+static GBytes *
 read_wbdi (const char *path, GError **error)
 {
   g_autofree char *data = NULL;
@@ -36,20 +59,75 @@ read_wbdi (const char *path, GError **error)
 
   if (g_str_has_suffix (lower, ".zip"))
     {
+      const char *argv[] = { "unzip", "-p", path, "Wbdi.dll", NULL };
+      return run_capture (argv, error);
+    }
+  if (g_str_has_suffix (lower, ".cab"))
+    {
+      g_autofree char *dir = g_dir_make_tmp ("lg-gram-fp-XXXXXX", error);
+      g_autofree char *dll = NULL;
       g_autoptr(GSubprocess) p = NULL;
-      g_autoptr(GBytes) out = NULL;
+      gboolean ok;
 
-      p = g_subprocess_new (G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_SILENCE, error,
-                            "unzip", "-p", path, "Wbdi.dll", NULL);
-      if (!p || !g_subprocess_communicate (p, NULL, NULL, &out, NULL, error))
+      if (!dir)
         return NULL;
-      if (!g_subprocess_get_successful (p) || !out || g_bytes_get_size (out) == 0)
-        return gv_error_null (error, GV_ERROR_IO, "%s: no Wbdi.dll inside (is `unzip` installed?)", path);
-      return g_steal_pointer (&out);
+      p = g_subprocess_new (G_SUBPROCESS_FLAGS_STDOUT_SILENCE | G_SUBPROCESS_FLAGS_STDERR_SILENCE, error,
+                            "gcab", "-x", "-C", dir, path, NULL);
+      ok = p && g_subprocess_wait_check (p, NULL, error);
+      dll = g_build_filename (dir, "Wbdi.dll", NULL);
+      ok = ok && g_file_get_contents (dll, &data, &len, error);
+      g_unlink (dll);
+      {
+        g_autoptr(GDir) d = g_dir_open (dir, 0, NULL);
+        const char *n;
+        while (d && (n = g_dir_read_name (d)))
+          {
+            g_autofree char *f = g_build_filename (dir, n, NULL);
+            g_unlink (f);
+          }
+      }
+      g_rmdir (dir);
+      if (!ok)
+        return NULL;
+      return g_bytes_new_take (g_steal_pointer (&data), len);
     }
   if (!g_file_get_contents (path, &data, &len, error))
     return NULL;
   return g_bytes_new_take (g_steal_pointer (&data), len);
+}
+
+char *
+gv_download_driver (GError **error)
+{
+  g_autofree char *dir = g_dir_make_tmp ("lg-gram-fp-XXXXXX", error);
+  g_autofree char *path = NULL;
+  g_autofree char *data = NULL;
+  g_autofree char *sha = NULL;
+  g_autoptr(GSubprocess) p = NULL;
+  gsize len;
+
+  if (!dir)
+    return NULL;
+  path = g_build_filename (dir, "goodix-driver.cab", NULL);
+  p = g_subprocess_new (G_SUBPROCESS_FLAGS_STDERR_SILENCE, error,
+                        "curl", "-fsSL", "--retry", "3", "--connect-timeout", "15",
+                        "-o", path, DRIVER_CAB_URL, NULL);
+  if (!p || !g_subprocess_wait_check (p, NULL, error))
+    {
+      g_clear_error (error);
+      return gv_error_null (error, GV_ERROR_IO,
+                            "download from Microsoft Update failed (offline?). Retry, or use "
+                            "`--driver FILE` with LG's GD_FP_W106_15_3.1.100.320.zip");
+    }
+  if (!g_file_get_contents (path, &data, &len, error))
+    return NULL;
+  sha = g_compute_checksum_for_data (G_CHECKSUM_SHA256, (const guint8 *) data, len);
+  if (!g_str_equal (sha, DRIVER_CAB_SHA256))
+    {
+      g_unlink (path);
+      return gv_error_null (error, GV_ERROR_PROTO, "downloaded driver has an unexpected checksum");
+    }
+  return g_steal_pointer (&path);
 }
 
 static gboolean
@@ -80,7 +158,7 @@ gv_extract (const char *lg_driver, const char *out_dir, GError **error)
   sha = g_compute_checksum_for_data (G_CHECKSUM_SHA256, d, len);
   if (!g_str_equal (sha, WBDI_SHA256))
     return gv_error_false (error, GV_ERROR_PROTO,
-                           "unsupported Wbdi.dll (sha256 %s); use LG's GD_FP_W106 driver 3.1.100.320", sha);
+                           "unsupported Wbdi.dll (sha256 %s); Goodix driver 3.1.100.320 is required", sha);
 
   memcpy (cfg, d + CONFIG_OFFSET, sizeof cfg);
   gv_cfg_fix_checksum (cfg);
@@ -139,7 +217,7 @@ in_bootloader (GError **error)
 {
   if (error && *error)
     g_prefix_error (error, "the sensor is left in its bootloader and has no firmware until "
-                           "provisioning succeeds; run `sudo lg-gram-fp-tool provision` again. ");
+                           "provisioning succeeds; run `sudo lg-gram-fp-tool setup` again. ");
   return FALSE;
 }
 

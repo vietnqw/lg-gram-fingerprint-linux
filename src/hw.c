@@ -36,7 +36,7 @@ gv_config_load (const char *path, guint8 *config, GError **error)
 
   if (!g_file_get_contents (path, &data, &len, &e))
     return gv_error_false (error, GV_ERROR_NO_CONFIG,
-                           "sensor configuration missing (%s); run `sudo lg-gram-fp-tool extract <LG driver>`",
+                           "sensor configuration missing (%s); run `sudo lg-gram-fp-tool setup`",
                            e->message);
   if (len != GV_CFG_SIZE)
     return gv_error_false (error, GV_ERROR_NO_CONFIG, "%s: expected %d bytes, got %zu",

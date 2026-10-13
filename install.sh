@@ -1,11 +1,12 @@
 #!/bin/sh
 # Build and install the GXFP5A8B fingerprint driver from source (Debian/Ubuntu).
-#   ./install.sh [LG-DRIVER.zip]
+#   ./install.sh [--driver FILE]   (FILE: optional offline Goodix/LG driver package)
 # Run as a normal user; it uses sudo where needed.
 set -eu
 
 cd "$(dirname "$0")"
-LG_DRIVER="${1:-}"
+DRIVER=
+[ "${1:-}" = "--driver" ] && DRIVER="${2:?--driver needs a file}"
 
 say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -20,7 +21,7 @@ command -v apt-get >/dev/null || die "this script supports Debian/Ubuntu (apt); 
 say "Installing build dependencies"
 sudo apt-get install -y --no-install-recommends \
   build-essential meson ninja-build pkg-config libglib2.0-dev libssl-dev libopencv-dev \
-  libfprint-2-tod-dev fprintd libpam-fprintd unzip
+  libfprint-2-tod-dev fprintd libpam-fprintd curl gcab unzip
 
 say "Building"
 [ -d build ] && RECONF=--reconfigure || RECONF=
@@ -40,24 +41,5 @@ sudo udevadm settle
 sudo systemctl daemon-reload
 sudo systemctl try-restart fprintd.service || true
 
-if [ ! -s /var/lib/lg-gram-fingerprint/firmware.bin ]; then
-  if [ -z "$LG_DRIVER" ]; then
-    say "Almost done: the sensor configuration comes from LG's Windows driver"
-    echo "   Download LG's \"Fingerprint Driver\" 3.1.100.320 (GD_FP_W106_15_3.1.100.320.zip)"
-    echo "   for your LG gram, then run:  ./install.sh /path/to/GD_FP_W106_15_3.1.100.320.zip"
-    exit 0
-  fi
-  say "Extracting sensor configuration from $LG_DRIVER"
-  sudo lg-gram-fp-tool extract "$LG_DRIVER"
-fi
-
-say "Checking the sensor"
-if ! sudo lg-gram-fp-tool status; then
-  echo
-  say "The sensor must be paired with Linux once"
-  sudo lg-gram-fp-tool provision
-fi
-
-say "Done. Next steps:"
-echo "   fprintd-enroll                          # enroll a finger"
-echo "   sudo pam-auth-update --enable lg-gram-fingerprint # use it for login, lock screen and sudo"
+say "Setting up the sensor"
+sudo lg-gram-fp-tool setup ${DRIVER:+--driver "$DRIVER"}

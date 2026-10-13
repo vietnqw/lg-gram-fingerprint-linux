@@ -10,12 +10,13 @@ Rules-Requires-Root: no
 
 Package: lg-gram-fingerprint
 Architecture: amd64
-Depends: ${shlibs:Depends}, ${misc:Depends}, libfprint-2-tod1, fprintd, unzip
-Recommends: libpam-fprintd
+Depends: ${shlibs:Depends}, ${misc:Depends}, libfprint-2-tod1, fprintd, curl, gcab
+Recommends: libpam-fprintd, unzip
 Description: driver for the Goodix GXFP5A8B fingerprint sensor (LG gram)
  libfprint TOD driver and setup tool for the Goodix GXFP5A8B ("Geneva",
  GF3268 + GM168SEC) SPI fingerprint sensor found in LG gram laptops
  (e.g. 15Z90N). Works with fprintd for login, lock screen and sudo.
  .
- The sensor configuration is extracted from LG's Windows driver with
- lg-gram-fp-tool; no proprietary files are shipped.
+ Run `sudo lg-gram-fp-tool setup` once after installing: it downloads the
+ Goodix Windows driver from Microsoft Update to extract the sensor
+ configuration (no proprietary files are shipped) and pairs the sensor.
